@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from strands import Agent, tool
+from strands import Agent, tool, Hookprovider
 from strands.tools.mcp import MCPClient
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
@@ -94,30 +94,21 @@ Keep your tone supportive and informative
 """
 
 
-def main() -> None:
+@app.post("/stream")
+async def stream_responses(request: promptRequest):
+    async def generate():
+        with remoteClient:
+            mcpTools = remoteClient.list_tools_sync()
 
-    @app.post("/stream")
-    async def stream_responses(request: promptRequest):
-        async def generate():
-            with remoteClient:
-                    mcpTools = remoteClient.list_tools_sync()
-            
-                    for tool in mcpTools:
-                        print(tool.tool_name)
-            
-                    agent = Agent(
-                            model="zai.glm-4.7",
-                            tools=[checkOrderStatus, *mcpTools],
-                            system_prompt=SYSTEM_PROMPT,
-                            callback_handler=None
-                    )
-            
+            agent = Agent(
+                model="zai.glm-4.7",
+                tools=[checkOrderStatus, *mcpTools],
+                system_prompt=SYSTEM_PROMPT,
+                callback_handler=None,
+            )
 
-                    async for event in agent.stream_async(request.prompt):
-                        if "data" in event:
-                            yield event["data"]
+            async for event in agent.stream_async(request.prompt):
+                if "data" in event:
+                    yield event["data"]
 
-        return StreamingResponse(generate(), media_type="text/plain")
-
-if __name__ == "__main__":
-    main()
+    return StreamingResponse(generate(), media_type="text/plain")
