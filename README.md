@@ -53,10 +53,6 @@ Reads credentials from environment variables or a `.env` file. Supports `--regio
 python seed_tickets.py --url http://127.0.0.1:8756/mcp
 ```
 
-### Calendar Widget
-
-**`calculator.html`** — A CSS calendar UI built with vanilla HTML/CSS/JS. Highlights today's date and supports date selection.
-
 ## Setup
 
 ```bash
