@@ -1,0 +1,5 @@
+boto3
+awscli
+strands-agents
+strands-agents-tools
+fastmcp
