@@ -1,6 +1,13 @@
 from pydantic import BaseModel
 from strands import Agent, tool
 from strands.tools.mcp import MCPClient
+from fastapi import FastAPI
+from fastapi.responses import StreamingResponse
+
+app = FastAPI()
+
+class promptRequest(BaseModel):
+    prompt: str
 
 class SupportTicket(BaseModel):
     ticketNo: int
@@ -88,35 +95,29 @@ Keep your tone supportive and informative
 
 
 def main() -> None:
-    with remoteClient:
-        mcpTools = remoteClient.list_tools_sync()
 
-        for tool in mcpTools:
-            print(tool.tool_name)
+    @app.post("/stream")
+    async def stream_responses(request: promptRequest):
+        async def generate():
+            with remoteClient:
+                    mcpTools = remoteClient.list_tools_sync()
+            
+                    for tool in mcpTools:
+                        print(tool.tool_name)
+            
+                    agent = Agent(
+                            model="zai.glm-4.7",
+                            tools=[checkOrderStatus, *mcpTools],
+                            system_prompt=SYSTEM_PROMPT,
+                            callback_handler=None
+                    )
+            
 
-        agent = Agent(
-                model="zai.glm-4.7",
-                tools=[checkOrderStatus, *mcpTools],
-                system_prompt=SYSTEM_PROMPT,
-            )
+                    async for event in agent.stream_async(request.prompt):
+                        if "data" in event:
+                            yield event["data"]
 
-        prompts = [
-            "Can you tell me the status of diapers that I ordered?",
-            "I haven't received the order yet.",
-            "Please raise a ticket.",
-            "I have been waiting for 2 days after raising my complaint, "
-            "with no reply from the support team.",
-            "The order has been reached to my home Thanks, please close my ticket",
-        ]
-        for prompt in prompts:
-            print(f"\nYou: {prompt}\nAssistant:")
-            agent(prompt)
-            print()
-            see_tickets()
-
-        import json
-        print(json.dumps(agent.messages, indent=2, default=str))
-
+        return StreamingResponse(generate(), media_type="text/plain")
 
 if __name__ == "__main__":
     main()

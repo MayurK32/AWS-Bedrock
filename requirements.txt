@@ -3,3 +3,6 @@ awscli
 strands-agents
 strands-agents-tools
 fastmcp
+fastapi
+uvicorn
+streamlit
