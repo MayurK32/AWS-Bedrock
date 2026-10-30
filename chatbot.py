@@ -7,6 +7,8 @@ Requires the FastAPI backend running on port 8000:
     uvicorn order_support_agent:app --port 8000
 """
 
+import uuid
+
 import streamlit as st
 import requests
 
@@ -17,6 +19,8 @@ st.title("Order Support Chat")
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
+if "session_id" not in st.session_state:
+    st.session_state.session_id = str(uuid.uuid4())
 
 # Display chat history
 for msg in st.session_state.messages:
@@ -35,7 +39,7 @@ if prompt := st.chat_input("Ask about your order..."):
         try:
             response = requests.post(
                 API_URL,
-                json={"prompt": prompt},
+                json={"prompt": prompt, "session_id": st.session_state.session_id},
                 stream=True,
                 timeout=120,
             )

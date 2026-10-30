@@ -1,13 +1,16 @@
 from pydantic import BaseModel
-from strands import Agent, tool, Hookprovider
+from strands import Agent, tool
+from strands.hooks import HookProvider
 from strands.tools.mcp import MCPClient
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
+from support_hooks import TicketClosureHook
 
 app = FastAPI()
 
 class promptRequest(BaseModel):
     prompt: str
+    session_id: str
 
 class SupportTicket(BaseModel):
     ticketNo: int
@@ -26,6 +29,9 @@ orderStatusDict = {
 
 # Demo storage: tickets disappear when the script stops.
 tickets: dict[int, SupportTicket] = {}
+
+# In-memory conversation history keyed by session ID.
+sessions: dict[str, list] = {}
 
 remoteClient = MCPClient(
     url="http://127.0.0.1:8756/mcp",
@@ -100,15 +106,21 @@ async def stream_responses(request: promptRequest):
         with remoteClient:
             mcpTools = remoteClient.list_tools_sync()
 
+            history = sessions.get(request.session_id, [])
+
             agent = Agent(
                 model="zai.glm-4.7",
                 tools=[checkOrderStatus, *mcpTools],
                 system_prompt=SYSTEM_PROMPT,
                 callback_handler=None,
+                hooks=[TicketClosureHook()],
+                messages=history,
             )
 
             async for event in agent.stream_async(request.prompt):
                 if "data" in event:
                     yield event["data"]
+
+            sessions[request.session_id] = agent.messages
 
     return StreamingResponse(generate(), media_type="text/plain")
