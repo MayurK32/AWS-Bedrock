@@ -8,9 +8,11 @@ Hands-on examples exploring **Amazon Bedrock**, the **Strands Agents** framework
 
 **`order_support_agent.py`** — A multi-turn customer support agent built with [Strands Agents](https://github.com/strands-agents/sdk-python) and AWS Bedrock (Z.AI GLM 4.7).
 
+- FastAPI backend with a streaming `/stream` endpoint
 - Checks order status from an in-memory product dictionary
 - Connects to a remote MCP ticket server for ticket operations (raise, escalate, close)
-- Runs through a scripted demo conversation simulating a full support lifecycle
+- In-memory session-based conversation history for multi-turn support
+- Custom hook support (e.g., `TicketClosureHook` via `support_hooks.py`)
 - Filters out unrelated MCP tools (weather, currency, inventory, shipping)
 
 ### Ticket MCP Server
@@ -40,6 +42,18 @@ python bedrock_glm47.py --region us-east-1 --profile my-profile
 ```
 
 Reads credentials from environment variables or a `.env` file. Supports `--region`, `--profile`, and `--max-tokens` flags.
+
+### Chatbot Frontend
+
+**`chatbot.py`** — A Streamlit chat UI that connects to the FastAPI backend.
+
+- Streams agent responses in real time
+- Maintains per-session conversation history via a UUID session ID
+- Error handling for backend connectivity issues
+
+```bash
+streamlit run chatbot.py
+```
 
 ### Simple Agent
 
@@ -81,14 +95,30 @@ Your IAM user/role needs `bedrock:InvokeModel` permission.
 - `boto3`, `awscli` — AWS SDK and CLI
 - `strands-agents`, `strands-agents-tools` — Agent framework
 - `fastmcp` — MCP server toolkit
+- `fastapi`, `uvicorn` — Web framework and ASGI server
+- `streamlit` — Chat frontend
 
 ## Architecture
 
 ```
-order_support_agent.py  ──→  MCP Client  ──→  ticket_mcp_server.py
-        │                                           │
-        ├── checkOrderStatus (local tool)           ├── SQLite (data/tickets.db)
-        └── AWS Bedrock (GLM 4.7)                   └── 12+ ticket tools
+chatbot.py (Streamlit)  ──→  order_support_agent.py (FastAPI)  ──→  ticket_mcp_server.py
+        │                            │                                      │
+        └── session_id + prompt      ├── checkOrderStatus (local tool)      ├── SQLite (data/tickets.db)
+                                     ├── AWS Bedrock (GLM 4.7)              └── 12+ ticket tools
+                                     └── sessions dict (conversation history)
+```
+
+## Running
+
+```bash
+# Terminal 1: MCP ticket server
+python ticket_mcp_server.py --transport http --port 8756
+
+# Terminal 2: FastAPI backend
+uvicorn order_support_agent:app --port 8000
+
+# Terminal 3: Streamlit frontend
+streamlit run chatbot.py
 ```
 
 ## License
