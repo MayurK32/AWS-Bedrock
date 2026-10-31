@@ -13,6 +13,7 @@ import streamlit as st
 import requests
 
 API_URL = "http://localhost:8000/stream"
+LOGS_URL = "http://localhost:8000/tools/logs"
 
 st.set_page_config(page_title="Order Support Chat", page_icon="🛒")
 st.title("Order Support Chat")
@@ -59,3 +60,16 @@ if prompt := st.chat_input("Ask about your order..."):
             st.error(full_response)
 
     st.session_state.messages.append({"role": "assistant", "content": full_response})
+
+# Sidebar: Tool Usage Logs
+with st.sidebar:
+    st.header("Tool Usage Logs")
+    try:
+        logs = requests.get(f"{LOGS_URL}/{st.session_state.session_id}", timeout=5).json()
+        if not logs:
+            st.info("No tool calls yet.")
+        for i, log in enumerate(reversed(logs), 1):
+            with st.expander(f"{log['tool']} — {log['timestamp']}", expanded=(i == 1)):
+                st.json({"input": log.get("input", {}), "result": log.get("result")}  )
+    except requests.ConnectionError:
+        st.warning("Backend not connected.")

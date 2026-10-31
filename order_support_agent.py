@@ -1,10 +1,9 @@
 from pydantic import BaseModel
-from strands import Agent, tool
-from strands.hooks import HookProvider
+from strands import Agent, AgentSkills, tool
 from strands.tools.mcp import MCPClient
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
-from support_hooks import TicketClosureHook
+from support_hooks import ToolLogHook, tool_logs
 
 app = FastAPI()
 
@@ -76,28 +75,18 @@ def see_tickets() -> None:
         )
 
 
-SYSTEM_PROMPT = """
-You are an order-support assistant.
-Use checkOrderStatus for order status. If multiple products match, ask which one.
-Use the canonical product name returned by that tool for support tickets.
-Use ticketRaiser when the user asks to raise a ticket. Ask for the product and
-issue if unknown; reuse those details from this conversation when available.
-Use normal priority unless the user requests high priority.
-For an existing ticket's status, use getTicketStatus; do not call ticketRaiser
-just to check status because that tool can create a ticket.
-If a customer reports no support response for two or more days after raising
-an existing complaint, call escalateTicket without asking for confirmation.
-Also call escalateTicket when the user explicitly requests escalation.
-Use the existing ticket number from the conversation. Ask if it is unknown
-or ambiguous. Never create a new ticket merely to escalate an existing one.
-Only confirm creation or escalation after the tool reports success.
-Report the ticket number, current status, and escalation level from tool results.
-Never invent statuses, ticket numbers, delivery dates, response deadlines, or
-claim that a real support team has been notified. These tools update demo data.
-If user confirms that isssue has been resolved, acknowledge them with ticket details
-and get theier consent to close the ticket and update the status of ticket and acknowledge back
-Keep your tone supportive and informative
-"""
+skills_plugin = AgentSkills(skills="./skills/")
+
+SYSTEM_PROMPT = """You are an order-support assistant for an e-commerce platform.
+You help customers check order status, manage support tickets, and resolve issues.
+Only confirm actions after the tool reports success.
+Never invent statuses, ticket numbers, delivery dates, or response deadlines.
+These tools update demo data — never claim a real support team has been notified."""
+
+
+@app.get("/tools/logs/{session_id}")
+async def get_tool_logs(session_id: str):
+    return tool_logs.get(session_id, [])
 
 
 @app.post("/stream")
@@ -112,15 +101,19 @@ async def stream_responses(request: promptRequest):
                 model="zai.glm-4.7",
                 tools=[checkOrderStatus, *mcpTools],
                 system_prompt=SYSTEM_PROMPT,
+                plugins=[skills_plugin],
                 callback_handler=None,
-                hooks=[TicketClosureHook()],
+                hooks=[ToolLogHook(session_id=request.session_id)],
                 messages=history,
             )
 
-            async for event in agent.stream_async(request.prompt):
-                if "data" in event:
-                    yield event["data"]
-
-            sessions[request.session_id] = agent.messages
+            try:
+                async for event in agent.stream_async(request.prompt):
+                    if "data" in event:
+                        yield event["data"]
+            except Exception as e:
+                yield f"\n[Error: {e}]"
+            finally:
+                sessions[request.session_id] = agent.messages
 
     return StreamingResponse(generate(), media_type="text/plain")
